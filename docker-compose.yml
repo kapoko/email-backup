@@ -1,0 +1,43 @@
+services:
+  dovecot:
+    image: dovecot/dovecot:latest
+    container_name: email-archive-dovecot
+    env_file:
+      - .env
+    ports:
+      - "${DOVECOT_IMAP_PORT:-1143}:31143"
+    volumes:
+      - ./data/maildata:/srv/vmail
+      - ./dovecot/conf.d/90-mail-layout.conf:/etc/dovecot/conf.d/90-mail-layout.conf:ro
+    restart: unless-stopped
+
+  importer:
+    build:
+      context: ./importer
+    container_name: email-archive-importer
+    env_file:
+      - .env
+    volumes:
+      - ./data/maildata:/srv/vmail
+    depends_on:
+      - dovecot
+    restart: "no"
+
+  roundcube:
+    image: roundcube/roundcubemail:latest
+    container_name: email-archive-roundcube
+    env_file:
+      - .env
+    environment:
+      - ROUNDCUBEMAIL_DEFAULT_HOST=ssl://dovecot
+      - ROUNDCUBEMAIL_DEFAULT_PORT=31993
+      - ROUNDCUBEMAIL_DB_TYPE=sqlite
+      - ROUNDCUBEMAIL_DES_KEY=${ROUNDCUBE_DES_KEY:-please-change-me}
+    ports:
+      - "${ROUNDCUBE_HTTP_PORT:-8080}:80"
+    volumes:
+      - ./data/roundcube:/var/roundcube
+      - ./roundcube/config/imap-auth.inc.php:/var/roundcube/config/imap-auth.inc.php:ro
+    depends_on:
+      - dovecot
+    restart: unless-stopped
