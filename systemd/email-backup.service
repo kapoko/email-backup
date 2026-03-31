@@ -1,0 +1,14 @@
+[Unit]
+Description=Email Backup Gmail Import Job
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/path/to/email-backup
+ExecStart=/usr/bin/docker compose run --rm --no-deps importer
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

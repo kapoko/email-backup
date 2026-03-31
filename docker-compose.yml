@@ -1,7 +1,6 @@
 services:
   dovecot:
     image: dovecot/dovecot:latest
-    container_name: email-archive-dovecot
     env_file:
       - .env
     ports:
@@ -14,7 +13,6 @@ services:
   importer:
     build:
       context: ./importer
-    container_name: email-archive-importer
     env_file:
       - .env
     volumes:
@@ -25,7 +23,6 @@ services:
 
   roundcube:
     image: roundcube/roundcubemail:latest
-    container_name: email-archive-roundcube
     env_file:
       - .env
     environment:

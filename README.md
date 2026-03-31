@@ -63,3 +63,40 @@ Example external cron entry:
 ```bash
 0 2 * * * cd /path/to/email-backup && docker compose run --rm --no-deps importer
 ```
+
+## 6) Optional: run importer with systemd + journalctl
+
+This repo includes ready-to-copy unit files:
+
+- `systemd/email-backup.service`
+- `systemd/email-backup.timer`
+
+Install both:
+
+```bash
+sudo cp systemd/email-backup.service /etc/systemd/system/
+sudo cp systemd/email-backup.timer /etc/systemd/system/
+sudo vi /etc/systemd/system/email-backup.service
+sudo systemctl daemon-reload
+sudo systemctl enable --now email-backup.timer
+```
+
+In the service file, set `WorkingDirectory` to your checkout path (for example `/opt/email-backup`).
+
+Run one import via systemd:
+
+```bash
+sudo systemctl start email-backup.service
+```
+
+View logs:
+
+```bash
+journalctl -u email-backup.service -f
+```
+
+Check timer status:
+
+```bash
+systemctl list-timers --all | grep email-backup
+```
