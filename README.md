@@ -53,7 +53,7 @@ Roundcube:
 ## 5) Run one import job
 
 ```bash
-docker compose run --rm --no-deps importer
+docker compose run --rm --no-deps --build importer
 ```
 
 The importer container starts, runs one sync, and exits.
@@ -61,7 +61,7 @@ The importer container starts, runs one sync, and exits.
 Example external cron entry:
 
 ```bash
-0 2 * * * cd /path/to/email-backup && docker compose run --rm --no-deps importer
+0 2 * * * cd /path/to/email-backup && docker compose run --rm --no-deps --build importer
 ```
 
 ## 6) Optional: run importer with systemd + journalctl

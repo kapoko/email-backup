@@ -231,6 +231,7 @@ def import_message(
     gmail_id: str,
     tmp_dir: str,
     cur_dir: str,
+    include_spam_trash: bool,
 ) -> bool:
     if imported_exists(conn, gmail_id):
         return False
@@ -246,6 +247,11 @@ def import_message(
     raw_b64 = msg.get("raw", "")
     if not raw_b64:
         raise RuntimeError(f"message {gmail_id} has no raw payload")
+
+    if not include_spam_trash:
+        labels = set(msg.get("labelIds", []))
+        if "SPAM" in labels or "TRASH" in labels:
+            return False
 
     raw = base64.urlsafe_b64decode(add_padding(raw_b64))
     internal_date_ms = int(str(msg.get("internalDate", "0")) or "0")
@@ -298,7 +304,9 @@ def main() -> int:
         )
         saved_filter_signature = state_get(conn, "filter_signature")
 
-        if start_history and saved_filter_signature == filter_signature:
+        history_eligible = not query
+
+        if start_history and saved_filter_signature == filter_signature and history_eligible:
             try:
                 ids, _latest = fetch_message_ids_from_history(token, start_history, batch_size)
             except RuntimeError as exc:
@@ -307,6 +315,9 @@ def main() -> int:
                     ids = fetch_message_ids_initial(token, batch_size, query, include_spam_trash)
                 else:
                     raise
+        elif start_history and saved_filter_signature == filter_signature and not history_eligible:
+            log("query is set, skipping history mode and running full list")
+            ids = fetch_message_ids_initial(token, batch_size, query, include_spam_trash)
         elif start_history and saved_filter_signature != filter_signature:
             log("query/filter changed, running full list backfill")
             ids = fetch_message_ids_initial(token, batch_size, query, include_spam_trash)
@@ -317,7 +328,7 @@ def main() -> int:
 
         for gmail_id in ids:
             scanned_count += 1
-            if import_message(conn, token, gmail_id, tmp_dir, cur_dir):
+            if import_message(conn, token, gmail_id, tmp_dir, cur_dir, include_spam_trash):
                 imported_count += 1
             if scanned_count % progress_every == 0:
                 log(f"progress scanned={scanned_count} imported={imported_count}")

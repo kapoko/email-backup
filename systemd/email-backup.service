@@ -6,7 +6,7 @@ Wants=network-online.target
 [Service]
 Type=oneshot
 WorkingDirectory=/path/to/email-backup
-ExecStart=/usr/bin/docker compose run --rm --no-deps importer
+ExecStart=/usr/bin/docker compose run --rm --no-deps --build importer
 StandardOutput=journal
 StandardError=journal
 
