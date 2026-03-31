@@ -3,6 +3,8 @@ services:
     image: dovecot/dovecot:latest
     env_file:
       - .env
+    environment:
+      - USER_PASSWORD=${ARCHIVE_PASSWORD}
     ports:
       - "${DOVECOT_IMAP_PORT:-1143}:31143"
     volumes:
