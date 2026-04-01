@@ -9,7 +9,7 @@ if ! mkdir "$lockdir" 2>/dev/null; then
 fi
 
 cleanup() {
-  rmdir "$lockdir"
+  rmdir "$lockdir" 2>/dev/null || true
 }
 
 trap cleanup EXIT INT TERM

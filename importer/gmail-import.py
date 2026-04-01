@@ -4,6 +4,7 @@ import datetime as dt
 import json
 import os
 import random
+import ssl
 import sqlite3
 import string
 import subprocess
@@ -67,6 +68,45 @@ def api_get(path: str, token: str, query: dict | None = None) -> dict:
     except urllib.error.HTTPError as err:
         body = err.read().decode("utf-8", errors="replace")
         raise RuntimeError(f"gmail api error ({err.code}) at {path}: {body}") from err
+    except urllib.error.URLError as err:
+        reason = getattr(err, "reason", err)
+        raise RuntimeError(f"gmail transport error at {path}: {reason}") from err
+    except (TimeoutError, ssl.SSLError) as err:
+        raise RuntimeError(f"gmail transport error at {path}: {err}") from err
+
+
+def is_retryable_error(exc: RuntimeError) -> bool:
+    msg = str(exc)
+    if "gmail transport error" in msg:
+        return True
+    return any(code in msg for code in ("(429)", "(500)", "(502)", "(503)", "(504)"))
+
+
+def retry_api_get(path: str, token: str, query: dict | None = None, retries: int = 5) -> dict:
+    attempt = 0
+    delay_s = 1.0
+    while True:
+        try:
+            return api_get(path, token, query)
+        except RuntimeError as exc:
+            if attempt >= retries or not is_retryable_error(exc):
+                raise
+            attempt += 1
+            sleep_s = min(30.0, delay_s)
+            log(f"transient gmail api/transport error; retry={attempt} sleep={sleep_s:.1f}s path={path}")
+            time.sleep(sleep_s)
+            delay_s *= 2
+
+
+def api_get_with_refresh(path: str, token: str, query: dict | None = None) -> tuple[dict, str]:
+    try:
+        return retry_api_get(path, token, query), token
+    except RuntimeError as exc:
+        if "gmail api error (401)" not in str(exc):
+            raise
+        log("access token invalid/expired; refreshing and retrying once")
+        refreshed = get_access_token()
+        return retry_api_get(path, refreshed, query), refreshed
 
 
 def ensure_maildir(root: str) -> tuple[str, str, str]:
@@ -151,7 +191,7 @@ def write_mail(tmp_dir: str, cur_dir: str, gmail_id: str, internal_date_ms: int,
     return cur_path
 
 
-def fetch_message_ids_initial(token: str, batch_size: int, query: str, include_spam_trash: bool) -> list[str]:
+def fetch_message_ids_initial(token: str, batch_size: int, query: str, include_spam_trash: bool) -> tuple[list[str], str]:
     ids: list[str] = []
     page_token = ""
     page = 0
@@ -166,7 +206,7 @@ def fetch_message_ids_initial(token: str, batch_size: int, query: str, include_s
         if page_token:
             params["pageToken"] = page_token
 
-        payload = api_get("/messages", token, params)
+        payload, token = api_get_with_refresh("/messages", token, params)
         for item in payload.get("messages", []):
             msg_id = item.get("id", "").strip()
             if msg_id:
@@ -177,10 +217,10 @@ def fetch_message_ids_initial(token: str, batch_size: int, query: str, include_s
         page_token = payload.get("nextPageToken", "")
         if not page_token:
             break
-    return ids
+    return ids, token
 
 
-def fetch_message_ids_from_history(token: str, start_history_id: str, batch_size: int) -> tuple[list[str], str | None]:
+def fetch_message_ids_from_history(token: str, start_history_id: str, batch_size: int) -> tuple[list[str], str | None, str]:
     ids: set[str] = set()
     page_token = ""
     latest_history = start_history_id
@@ -196,7 +236,7 @@ def fetch_message_ids_from_history(token: str, start_history_id: str, batch_size
         if page_token:
             params["pageToken"] = page_token
 
-        payload = api_get("/history", token, params)
+        payload, token = api_get_with_refresh("/history", token, params)
         history = payload.get("history", [])
         for event in history:
             history_id = str(event.get("id", "")).strip()
@@ -214,15 +254,15 @@ def fetch_message_ids_from_history(token: str, start_history_id: str, batch_size
         if not page_token:
             break
 
-    return list(ids), latest_history
+    return list(ids), latest_history, token
 
 
-def fetch_current_history_id(token: str) -> str:
-    payload = api_get("/profile", token)
+def fetch_current_history_id(token: str) -> tuple[str, str]:
+    payload, token = api_get_with_refresh("/profile", token)
     history_id = str(payload.get("historyId", "")).strip()
     if not history_id:
         raise RuntimeError("gmail profile missing historyId")
-    return history_id
+    return history_id, token
 
 
 def import_message(
@@ -232,16 +272,16 @@ def import_message(
     tmp_dir: str,
     cur_dir: str,
     include_spam_trash: bool,
-) -> bool:
+) -> tuple[bool, str]:
     if imported_exists(conn, gmail_id):
-        return False
+        return False, token
 
     try:
-        msg = api_get(f"/messages/{gmail_id}", token, {"format": "raw"})
+        msg, token = api_get_with_refresh(f"/messages/{gmail_id}", token, {"format": "raw"})
     except RuntimeError as exc:
         if "gmail api error (404)" in str(exc):
             log(f"skip missing message id={gmail_id}")
-            return False
+            return False, token
         raise
 
     raw_b64 = msg.get("raw", "")
@@ -261,7 +301,7 @@ def import_message(
         "INSERT INTO imported_messages(gmail_id, internal_date_ms, maildir_path, imported_at) VALUES(?, ?, ?, ?)",
         (gmail_id, internal_date_ms, mail_path, now_iso()),
     )
-    return True
+    return True, token
 
 
 def main() -> int:
@@ -285,7 +325,7 @@ def main() -> int:
     log(f"gmail-import start query={query or '<empty>'} include_spam_trash={str(include_spam_trash).lower()} batch_size={batch_size}")
 
     token = get_access_token()
-    current_history = fetch_current_history_id(token)
+    current_history, token = fetch_current_history_id(token)
 
     cur_dir, _new_dir, tmp_dir = ensure_maildir(user_root)
     conn = connect_db(db_path)
@@ -308,27 +348,28 @@ def main() -> int:
 
         if start_history and saved_filter_signature == filter_signature and history_eligible:
             try:
-                ids, _latest = fetch_message_ids_from_history(token, start_history, batch_size)
+                ids, _latest, token = fetch_message_ids_from_history(token, start_history, batch_size)
             except RuntimeError as exc:
                 if "(404)" in str(exc):
                     log("history checkpoint expired, falling back to full list")
-                    ids = fetch_message_ids_initial(token, batch_size, query, include_spam_trash)
+                    ids, token = fetch_message_ids_initial(token, batch_size, query, include_spam_trash)
                 else:
                     raise
         elif start_history and saved_filter_signature == filter_signature and not history_eligible:
             log("query is set, skipping history mode and running full list")
-            ids = fetch_message_ids_initial(token, batch_size, query, include_spam_trash)
+            ids, token = fetch_message_ids_initial(token, batch_size, query, include_spam_trash)
         elif start_history and saved_filter_signature != filter_signature:
             log("query/filter changed, running full list backfill")
-            ids = fetch_message_ids_initial(token, batch_size, query, include_spam_trash)
+            ids, token = fetch_message_ids_initial(token, batch_size, query, include_spam_trash)
         else:
-            ids = fetch_message_ids_initial(token, batch_size, query, include_spam_trash)
+            ids, token = fetch_message_ids_initial(token, batch_size, query, include_spam_trash)
 
         log(f"processing_ids={len(ids)}")
 
         for gmail_id in ids:
             scanned_count += 1
-            if import_message(conn, token, gmail_id, tmp_dir, cur_dir, include_spam_trash):
+            imported, token = import_message(conn, token, gmail_id, tmp_dir, cur_dir, include_spam_trash)
+            if imported:
                 imported_count += 1
             if scanned_count % progress_every == 0:
                 log(f"progress scanned={scanned_count} imported={imported_count}")
@@ -344,4 +385,8 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    try:
+        raise SystemExit(main())
+    except KeyboardInterrupt:
+        log("interrupted by user (Ctrl+C), exiting")
+        raise SystemExit(130)
