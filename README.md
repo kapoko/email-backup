@@ -13,6 +13,7 @@ Edit `.env`:
 - `GMAIL_ADDRESS`
 - OAuth client credentials (`GMAIL_OAUTH_CLIENT_ID` / `GMAIL_OAUTH_CLIENT_SECRET`, or `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`)
 - `ARCHIVE_USER`
+- `MAILDATA_PATH` (host path for Maildir data, default `./data/maildata`)
 - `GMAIL_OAUTH_SCOPE` (defaults to `https://www.googleapis.com/auth/gmail.readonly`)
 - `GMAIL_QUERY` (use Gmail search query, e.g. `after:2026/03/30`)
 

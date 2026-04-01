@@ -8,7 +8,7 @@ services:
     ports:
       - "${DOVECOT_IMAP_PORT:-1143}:31143"
     volumes:
-      - ./data/maildata:/srv/vmail
+      - ${MAILDATA_PATH:-./data/maildata}:/srv/vmail
       - ./dovecot/conf.d/90-mail-layout.conf:/etc/dovecot/conf.d/90-mail-layout.conf:ro
     restart: unless-stopped
 
@@ -18,7 +18,7 @@ services:
     env_file:
       - .env
     volumes:
-      - ./data/maildata:/srv/vmail
+      - ${MAILDATA_PATH:-./data/maildata}:/srv/vmail
     depends_on:
       - dovecot
     restart: "no"
