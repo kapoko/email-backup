@@ -6,7 +6,9 @@ Wants=network-online.target
 [Service]
 Type=oneshot
 WorkingDirectory=/path/to/email-backup
+EnvironmentFile=-/path/to/email-backup/.env
 ExecStart=/usr/bin/docker compose run --rm --no-deps --build importer
+ExecStartPost=/bin/sh -c '[ -n "${EMAIL_BACKUP_PUSH_URL:-}" ] && /usr/bin/curl --retry 1 --retry-delay 5 --retry-all-errors --max-time 10 -fsS "${EMAIL_BACKUP_PUSH_URL}" || true'
 StandardOutput=journal
 StandardError=journal
 

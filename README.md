@@ -84,6 +84,8 @@ sudo systemctl enable --now email-backup.timer
 
 In the service file, set `WorkingDirectory` to your checkout path (for example `/opt/email-backup`).
 
+Optional monitoring ping (host-side): set `EMAIL_BACKUP_PUSH_URL` in the same `.env` file loaded by systemd. The provided unit will call this URL only after a successful import run.
+
 Run one import via systemd:
 
 ```bash
