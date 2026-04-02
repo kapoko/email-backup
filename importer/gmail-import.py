@@ -291,7 +291,7 @@ def import_message(
     if not include_spam_trash:
         labels = set(msg.get("labelIds", []))
         if "SPAM" in labels or "TRASH" in labels:
-            return False
+            return False, token
 
     raw = base64.urlsafe_b64decode(add_padding(raw_b64))
     internal_date_ms = int(str(msg.get("internalDate", "0")) or "0")
