@@ -14,6 +14,6 @@ cleanup() {
 
 trap cleanup EXIT INT TERM
 
-echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Starting Gmail import"
+echo "Starting Gmail import"
 python3 /usr/local/bin/gmail-import.py
-echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Gmail import complete"
+echo "<5>Gmail import complete"
