@@ -37,4 +37,4 @@ case "$imported_count" in
     ;;
 esac
 
-echo "<5>Gmail import complete, imported=${imported_count}"
+echo "<5>Gmail import complete [${imported_count} emails]"
