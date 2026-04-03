@@ -16,6 +16,7 @@ import urllib.request
 
 
 API_BASE = "https://gmail.googleapis.com/gmail/v1/users/me"
+RESULT_FILE = "/tmp/gmail-import.result"
 
 
 def env(name: str, default: str = "") -> str:
@@ -28,6 +29,14 @@ def now_iso() -> str:
 
 def log(message: str) -> None:
     print(f"[{now_iso()}] {message}", flush=True)
+
+
+def write_result(imported_count: int) -> None:
+    try:
+        with open(RESULT_FILE, "w", encoding="utf-8") as handle:
+            handle.write(f"{imported_count}\n")
+    except OSError as exc:
+        log(f"failed_to_write_result path={RESULT_FILE} error={exc}")
 
 
 def bool_env(name: str, default: bool = False) -> bool:
@@ -380,6 +389,7 @@ def main() -> int:
     finally:
         conn.close()
 
+    write_result(imported_count)
     log(f"done scanned={scanned_count} imported={imported_count} history={current_history}")
     return 0
 
